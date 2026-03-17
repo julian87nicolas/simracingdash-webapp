@@ -1,0 +1,14 @@
+{
+  "name": "simracingdash-webapp",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web",
+    "apps/bridge"
+  ],
+  "scripts": {
+    "build": "npm run -w apps/bridge build && npm run -w apps/web build",
+    "dev:web": "npm run -w apps/web dev",
+    "dev:bridge": "npm run -w apps/bridge dev"
+  }
+}
