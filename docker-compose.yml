@@ -1,0 +1,22 @@
+services:
+  bridge:
+    build:
+      context: .
+      dockerfile: apps/bridge/Dockerfile
+    environment:
+      UDP_HOST: 0.0.0.0
+      UDP_PORT: 20777
+      WS_HOST: 0.0.0.0
+      WS_PORT: 3001
+    ports:
+      - "3001:3001"
+      - "20777:20777/udp"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - bridge
