@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type DashboardState = {
   packetCount: number;
@@ -8,6 +8,16 @@ type DashboardState = {
   gear: number;
   throttle: number;
   brake: number;
+  drsActive: boolean;
+  ersPercent: number;
+  ersMode: string;
+  fuelLevel: number;
+  lapDelta: number | string;
+  currentLapTime: number;
+  bestLapTime: number;
+  sector: string;
+  alertFlag: string;
+  pitStatus: string;
 };
 
 const initialState: DashboardState = {
@@ -18,26 +28,46 @@ const initialState: DashboardState = {
   gear: 0,
   throttle: 0,
   brake: 0,
+  drsActive: false,
+  ersPercent: 0,
+  ersMode: 'NORM',
+  fuelLevel: 100,
+  lapDelta: 0,
+  currentLapTime: 0,
+  bestLapTime: 0,
+  sector: 'S1',
+  alertFlag: '',
+  pitStatus: '',
 };
 
 
-function buildWsUrl(port: number) {
-  // Usa localhost y el puerto dado
-  return `ws://localhost:${port}`;
+const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:3001';
+
+function formatLapTime(ms: number) {
+  if (!ms || ms < 0) return '--:--.---';
+  const min = Math.floor(ms / 60000);
+  const sec = Math.floor((ms % 60000) / 1000);
+  const msRem = ms % 1000;
+  return `${min}:${sec.toString().padStart(2, '0')}.${msRem.toString().padStart(3, '0')}`;
 }
 
 export function App() {
   const [connected, setConnected] = useState(false);
   const [state, setState] = useState<DashboardState>(initialState);
-  const [port, setPort] = useState<number>(20777);
+  const [udpPort, setUdpPort] = useState<number>(20777);
   const [inputPort, setInputPort] = useState<string>('20777');
   const [started, setStarted] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     if (!started) return;
-    const ws = new WebSocket(buildWsUrl(port));
+    const ws = new WebSocket(WS_URL);
+    wsRef.current = ws;
 
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => {
+      setConnected(true);
+      ws.send(JSON.stringify({ type: 'configure_udp', udpPort }));
+    };
     ws.onclose = () => setConnected(false);
     ws.onerror = () => setConnected(false);
     ws.onmessage = (event) => {
@@ -51,8 +81,11 @@ export function App() {
       }
     };
 
-    return () => ws.close();
-  }, [port, started]);
+    return () => {
+      wsRef.current = null;
+      ws.close();
+    };
+  }, [started, udpPort]);
 
   const rpmPercent = useMemo(() => Math.min(1, Math.max(0, state.rpm / 15000)), [state.rpm]);
   const throttlePercent = Math.round(state.throttle * 100);
@@ -62,20 +95,20 @@ export function App() {
     return (
       <main className="page">
         <section className="dash-card">
-          <h2>Selecciona el puerto UDP</h2>
+          <h2>Selecciona el puerto UDP del juego</h2>
           <form
             onSubmit={e => {
               e.preventDefault();
               const num = Number(inputPort);
               if (!isNaN(num) && num > 0 && num < 65536) {
-                setPort(num);
+                setUdpPort(num);
                 setStarted(true);
               }
             }}
             style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}
           >
             <label>
-              Puerto UDP:
+              Puerto UDP (juego):
               <input
                 type="number"
                 min={1}
@@ -96,43 +129,76 @@ export function App() {
 
   return (
     <main className="page">
-      <section className="dash-card">
+      <section className="dash-card f1-layout">
+        {/* Alertas y estado de conexión */}
         <header className="top-row">
           <span className={`status ${connected ? 'ok' : 'down'}`}>{connected ? 'LIVE' : 'OFFLINE'}</span>
           <span className="meta">Packets: {state.packetCount}</span>
+          <span className="alertas">BANDERA: {state.alertFlag || '--'} | PIT: {state.pitStatus || '--'}</span>
         </header>
 
-        <div className="center-grid">
-          <div className="metric">
-            <p className="label">Speed</p>
-            <p className="value">{state.speedKph}</p>
-            <p className="unit">km/h</p>
-          </div>
+        <div className="f1-main-grid">
+          {/* Izquierda: DRS, ERS, Combustible */}
+          <aside className="f1-left">
+            <div className="f1-block">
+              <div className="f1-label">DRS</div>
+              <div className="f1-value">{state.drsActive ? 'ACTIVO' : 'INACTIVO'}</div>
+            </div>
+            <div className="f1-block">
+              <div className="f1-label">ERS</div>
+              <div className="f1-value">{state.ersPercent}%</div>
+              <div className="f1-bar ers-bar"><div className="ers-fill" style={{width: `${state.ersPercent}%`}} /></div>
+              <div className="f1-label">Modo: {state.ersMode}</div>
+            </div>
+            <div className="f1-block">
+              <div className="f1-label">Combustible</div>
+              <div className="f1-value">{state.fuelLevel} L</div>
+              <div className="f1-bar fuel-bar"><div className="fuel-fill" style={{width: `${state.fuelLevel}%`}} /></div>
+            </div>
+          </aside>
 
-          <div className="metric gear">
-            <p className="label">Gear</p>
-            <p className="value">{state.gear}</p>
-          </div>
+          {/* Centro: Gear, Speed, RPM */}
+          <section className="f1-center">
+            <div className="f1-gear">{state.gear}</div>
+            <div className="f1-speed">{state.speedKph} <span className="f1-unit">km/h</span></div>
+            <div className="f1-rpm-row">
+              <span className="f1-label">RPM</span>
+              <span className="f1-rpm-value">{state.rpm}</span>
+            </div>
+            <div className="rpm-bar">
+              <div className="rpm-fill" style={{ width: `${rpmPercent * 100}%` }} />
+            </div>
+            <div className="pedals">
+              <div>
+                <p className="label">Throttle</p>
+                <p className="pedal-value">{throttlePercent}%</p>
+              </div>
+              <div>
+                <p className="label">Brake</p>
+                <p className="pedal-value">{brakePercent}%</p>
+              </div>
+            </div>
+          </section>
 
-          <div className="metric">
-            <p className="label">RPM</p>
-            <p className="value">{state.rpm}</p>
-          </div>
-        </div>
-
-        <div className="rpm-bar">
-          <div className="rpm-fill" style={{ width: `${rpmPercent * 100}%` }} />
-        </div>
-
-        <div className="pedals">
-          <div>
-            <p className="label">Throttle</p>
-            <p className="pedal-value">{throttlePercent}%</p>
-          </div>
-          <div>
-            <p className="label">Brake</p>
-            <p className="pedal-value">{brakePercent}%</p>
-          </div>
+          {/* Derecha: Delta, Tiempos, Sector */}
+          <aside className="f1-right">
+            <div className="f1-block">
+              <div className="f1-label">Delta</div>
+              <div className="f1-value">{state.lapDelta}</div>
+            </div>
+            <div className="f1-block">
+              <div className="f1-label">Vuelta actual</div>
+              <div className="f1-value">{formatLapTime(state.currentLapTime)}</div>
+            </div>
+            <div className="f1-block">
+              <div className="f1-label">Mejor vuelta</div>
+              <div className="f1-value">{formatLapTime(state.bestLapTime)}</div>
+            </div>
+            <div className="f1-block">
+              <div className="f1-label">Sector</div>
+              <div className="f1-value">{state.sector}</div>
+            </div>
+          </aside>
         </div>
       </section>
     </main>
