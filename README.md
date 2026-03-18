@@ -7,11 +7,14 @@ Proyecto inicial con dos apps:
 
 ## Quickstart
 
+
 ```bash
 npm install
 npm run dev:bridge
 npm run dev:web
 ```
+
+Al abrir la web, se te pedirá ingresar el puerto UDP (por defecto 20777) antes de mostrar el dashboard. El dashboard solo se conecta y muestra datos después de ingresar el puerto y hacer clic en "Iniciar dashboard".
 
 Variables útiles del bridge:
 

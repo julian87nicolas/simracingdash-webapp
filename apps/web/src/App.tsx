@@ -20,14 +20,22 @@ const initialState: DashboardState = {
   brake: 0,
 };
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:3001';
+
+function buildWsUrl(port: number) {
+  // Usa localhost y el puerto dado
+  return `ws://localhost:${port}`;
+}
 
 export function App() {
   const [connected, setConnected] = useState(false);
   const [state, setState] = useState<DashboardState>(initialState);
+  const [port, setPort] = useState<number>(20777);
+  const [inputPort, setInputPort] = useState<string>('20777');
+  const [started, setStarted] = useState(false);
 
   useEffect(() => {
-    const ws = new WebSocket(WS_URL);
+    if (!started) return;
+    const ws = new WebSocket(buildWsUrl(port));
 
     ws.onopen = () => setConnected(true);
     ws.onclose = () => setConnected(false);
@@ -44,11 +52,47 @@ export function App() {
     };
 
     return () => ws.close();
-  }, []);
+  }, [port, started]);
 
   const rpmPercent = useMemo(() => Math.min(1, Math.max(0, state.rpm / 15000)), [state.rpm]);
   const throttlePercent = Math.round(state.throttle * 100);
   const brakePercent = Math.round(state.brake * 100);
+
+  if (!started) {
+    return (
+      <main className="page">
+        <section className="dash-card">
+          <h2>Selecciona el puerto UDP</h2>
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              const num = Number(inputPort);
+              if (!isNaN(num) && num > 0 && num < 65536) {
+                setPort(num);
+                setStarted(true);
+              }
+            }}
+            style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}
+          >
+            <label>
+              Puerto UDP:
+              <input
+                type="number"
+                min={1}
+                max={65535}
+                value={inputPort}
+                onChange={e => setInputPort(e.target.value)}
+                style={{ marginLeft: 8, fontSize: '1.1rem', padding: '0.2rem 0.5rem', borderRadius: 6, border: '1px solid #ccc' }}
+              />
+            </label>
+            <button type="submit" style={{ fontSize: '1.1rem', padding: '0.4rem 1.2rem', borderRadius: 8, background: '#1a2a4a', color: '#fff', border: 'none', cursor: 'pointer' }}>
+              Iniciar dashboard
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="page">
